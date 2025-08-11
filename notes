@@ -1,0 +1,67 @@
+/sys/class/
+
+    This is a sysfs interface — a way for the kernel to expose device metadata to user space.
+    It holds class objects like "net", "block", or your "task_class".
+    Inside, device directories represent real devices and link to their driver & sysfs attributes.
+    Purpose: Acts as a standardized place for tools like udev to detect and manage devices.
+
+udev
+
+    A user-space daemon that listens for kernel uevents (like "a new device appeared").
+    Reads /sys metadata to decide what /dev/ node to create, its permissions, owner, etc.
+    Without it, you’d have to run mknod manually to create /dev/ entries.
+
+/dev/<device>
+
+    This is the special file user programs use with open(), read(), write(), etc.
+    When accessed, it routes calls into your driver’s file operations inside the kernel.
+
+
+
+
+
+        Kernel Space                                User Space
+   ──────────────────────────                ──────────────────────────
+        [Driver Module]                            [User Apps]
+   ──────────────────────────                ──────────────────────────
+   
+   alloc_chrdev_region()
+          │
+          ▼
+   +---------------------+
+   | Major / Minor nums  |   ← Device number allocated
+   +---------------------+
+          │
+   cdev_init() / cdev_add()  <- registers operators to char_dev obj, then add assigns major/minor
+          │
+          ▼
+   class_create()    ← Creates entry in `/sys/class/<class_name>/`
+          │
+   device_create()
+          │
+          ▼
+   ┌───────────────────────────────────────┐
+   │ sysfs entry: /sys/class/<class_name>/  │
+   └───────────────────────────────────────┘
+          │
+          ▼
+   (kernel emits "uevent")
+          │
+          ▼
+     ┌────────────┐
+     │   udev     │  ← Listens for events from kernel
+     └────────────┘
+          │
+          ▼
+   udev rule: Creates /dev/<device_name>
+          │
+          ▼
+   ┌───────────────────────────────────────┐
+   │  /dev/<device_name>                    │  ← Character device node
+   └───────────────────────────────────────┘
+          │
+          ▼
+   open() / read() / write() / ioctl() calls
+          │
+          ▼
+   Driver's file_operations struct → Your code
