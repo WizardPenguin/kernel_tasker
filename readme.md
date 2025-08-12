@@ -20,3 +20,30 @@ Set up a base kernel module to ensure:
 ```bash
 chmod +x test_script.sh
 ./test_script.sh
+```
+
+
+## Day 2 Objective
+Add read/write functionality to pass data between user space and kernel space.
+
+---
+
+## New Kernel Concepts Learned
+
+- **`copy_to_user()`**: Safely copies data from a kernel buffer to a user-space buffer.
+- **`copy_from_user()`**: Safely copies data from a user-space buffer to a kernel buffer.
+- **Kernel buffer management**: Used a fixed-size buffer (`BUF_SIZE`) inside the module for data storage.
+- **`lseek()` usage in user space**: Allows resetting the file offset for reading previously written data.
+- **File offsets**: Tracked by the kernel for each open file descriptor, shared by read/write calls unless manually changed with `lseek()`.
+
+---
+
+## Tools / Includes Used
+
+- `<linux/uaccess.h>` → Provides safe copy functions for kernel-user data transfer.
+- `pr_info()` → Kernel logging for debugging.
+- `<fcntl.h>`, `<unistd.h>` → Used in user space for file operations (`open`, `read`, `write`, `lseek`).
+
+## New test case added
+
+- read_write_test.c

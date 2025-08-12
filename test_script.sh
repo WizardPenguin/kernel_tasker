@@ -8,7 +8,8 @@ set -e
 MODULE_NAME="task_driver"
 DEVICE_PATH="/dev/task_device"
 TEST_FILE="load_unload_test.c"
-TEST_PROGRAM="load_unload_test"
+TEST_FILE2="read_write_test.c"
+TEST_PROGRAM="test"
 
 # build module
 echo "Building the kernel module..."
@@ -29,7 +30,14 @@ sudo dmesg | tail -n 5
 gcc -o $TEST_PROGRAM $TEST_FILE
 
 # run test program
-./$TEST_PROGRAM
+sudo ./$TEST_PROGRAM
+
+# compile test porgram
+
+gcc -o $TEST_PROGRAM $TEST_FILE2
+
+# run test program
+sudo ./$TEST_PROGRAM
 
 # remove module 
 echo "Removing the kernel module..."

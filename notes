@@ -65,3 +65,45 @@ udev
           │
           ▼
    Driver's file_operations struct → Your code
+
+
+
+
+## Adding file read and write operation
+allocating fix buffer on dirver for read and write data
+
+
+READ: 
+User: read( fd, buf, N ) 
+       ↓
+VFS calls your read(file, ..., *offset)
+       ↓
+[Driver] copy data from dev + *offset
+       ↓
+*offset += bytes_read    <-- YOU must update
+       ↓
+Return bytes_read (until 0 for EOF)
+
+WRITE:
+User: write( fd, buf, N )
+       ↓
+VFS calls your write(file, ..., *offset)
+       ↓
+[Driver] copy data into dev + *offset
+       ↓
+*offset += bytes_written <-- YOU must update
+       ↓
+Return bytes_written
+'
+
+         User Space FD Table               Kernel Open File Table
+Process ────────────────────────────┐
+                                     │
+  fd=3 ───────────────┐              │
+                      ▼              │
+                 struct file ───────────> inode (data)
+                      f_pos = 100
+                      read()/write() → updates same f_pos
+
+## so read and write shares same offset, need lseek to read too.
+
