@@ -9,6 +9,7 @@ MODULE_NAME="task_driver"
 DEVICE_PATH="/dev/task_device"
 TEST_FILE="load_unload_test.c"
 TEST_FILE2="read_write_test.c"
+TEST_FILE3="read_write_threaded.c"
 TEST_PROGRAM="test"
 
 # build module
@@ -38,6 +39,14 @@ gcc -o $TEST_PROGRAM $TEST_FILE2
 
 # run test program
 sudo ./$TEST_PROGRAM
+
+# compile test porgram
+
+gcc -o $TEST_PROGRAM $TEST_FILE3
+
+# run test program
+sudo ./$TEST_PROGRAM
+
 
 # remove module 
 echo "Removing the kernel module..."

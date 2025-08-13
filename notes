@@ -107,3 +107,136 @@ Process ────────────────────────
 
 ## so read and write shares same offset, need lseek to read too.
 
+
+
+Making mutexes with debug : 
+
+ Time  →
+ ┌──────────────────────────────────────────────────────────────────────────┐
+ │ P1: calls .read()                                                         │
+ │     mutex_trylock() → SUCCESS                                             │
+ │     (P1 owns the lock)                                                    │
+ │                                                                           
+ │ P2: calls .read() while P1 still has lock                                 │
+ │     mutex_trylock() → FAIL (lock busy)                                    │
+ │     ↓                                                                     │
+ │     pr_info("read waiting for mutex")                                     │
+ │     mutex_lock()  → BLOCKS until P1 releases                              │
+ │                                                                           
+ │ P1: finishes reading                                                      │
+ │     mutex_unlock()                                                        │
+ │                                                                           
+ │ P2: mutex_lock() wakes up → gets lock                                     │
+ │     proceeds to read                                                      │
+ │                                                                           
+ │ Both finish in sequence, no concurrent access to shared buffer            │
+ └──────────────────────────────────────────────────────────────────────────┘
+
+
+
+
+How mutex are made atomic operations: 
+done using counter 
+if(counter >= 0) lock acquired
+else count -- and then make a spin lock for process management.
+
+
+
+
+          Time →
+CPU0:   atomic_dec(count=1) → success → got lock ─────────────┐
+                                                              │
+CPU1:   atomic_dec(count=0) → fail → spinlock(wait_list) ──┐  │
+                                                           ↓  │
+CPU1:   add_to_wait_queue(current)                         │  │
+CPU1:   set TASK_UNINTERRUPTIBLE                           │  │
+CPU1:   release spinlock                                   │  │
+CPU1:   schedule()  (sleep until CPU0 calls mutex_unlock)  │  │
+                                                           │  │
+CPU0:   ...critical section...                             │  │
+CPU0:   mutex_unlock → wake_up(wait_list) ─────────────────┘  │
+                                                              ↓
+CPU1:   scheduler runs CPU1 → atomic_dec_if_positive → got lock
+
+
+This was just a illustration, this is how it really happens
+
+
+kernel/locking/mutex.c
+       static inline bool __mutex_trylock_fast(struct mutex *lock)
+       {
+       return atomic_long_try_cmpxchg_acquire(&lock->owner, &unowned, current);
+       }
+This is a atomic operation (atomic compare and exchange, if ower == 0, then ower = current else false)
+       bool compare_and_exchange(int *addr, int expected, int new_val) {
+       if (*addr == expected) {
+              *addr = new_val;
+              return true; // success
+       }
+       return false;    // failed, someone else changed it
+       }
+
+if fast path fails, then it goes to slow path
+
+meaning adding current process to wait queue, and then going to sleep until the lock released.
+
+       spin_lock(&lock->wait_lock);              // protect wait queue
+       __mutex_add_waiter(lock, &waiter, mode);  // enqueue myself
+       for (;;) {
+              set_current_state(state);             // mark sleeping
+              spin_unlock(&lock->wait_lock);
+              schedule();                           // yield CPU, sleep
+              spin_lock(&lock->wait_lock);
+              if (__mutex_trylock(lock))            // try again
+                     break;
+       }
+       spin_unlock(&lock->wait_lock);
+
+that wait queue is protected by spin lock 
+
+
+
+What the hell is spin lock?
+static inline int spin_trylock(spinlock_t *lock) {
+    unsigned int expected = 0; // unlocked
+    return cmpxchg(&lock->val, expected, 1) == expected;
+}
+
+void spin_lock(spinlock_t *lock) {
+    // FAST PATH
+    if (spin_trylock(lock))
+        return;
+
+    // SLOW PATH
+    for (;;) {
+        if (spin_trylock(lock))
+            return; // got it
+        cpu_relax(); // hint to CPU: "I'm spinning"
+    }
+}
+
+
+spin lock / vs mutex
+
+              [ Process Context ]
+ syscall() ----------------------> kernel function
+                 |  safe to sleep?
+                 |  YES → can block on mutex, wait queue
+                 ↓
+             schedule()
+                 ↓
+           [ Other Task Runs ]
+
+              [ Interrupt Context ]
+ hardware IRQ -------------------> interrupt handler
+                 |  safe to sleep?
+                 |  NO → use spinlock or atomic ops
+                 ↓
+        finish quickly, return from interrupt
+
+
+#TODO : more about sleepable and non-sleepable context, and detailed how locks implemented in linux
+
+
+
+

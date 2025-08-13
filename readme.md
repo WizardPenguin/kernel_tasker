@@ -47,3 +47,37 @@ Add read/write functionality to pass data between user space and kernel space.
 ## New test case added
 
 - read_write_test.c
+
+
+## Day 3 Objective
+Add **basic synchronization** to make read/write safe under concurrent access and implement `.llseek` support for flexible file offsets.
+
+---
+
+## Changes made
+- Added a `mutex` to the kernel module to protect the shared kernel buffer and size.
+- Ensured `read()` and `write()` acquire/release the mutex to avoid race conditions.
+- Implemented `.llseek` using `fixed_size_llseek()` to allow user-space `lseek()` behavior bounded by `BUF_SIZE`.
+
+---
+
+## New Kernel Concepts Learned
+- **`struct mutex` / `mutex_lock` / `mutex_unlock`**: Kernel primitive for mutual exclusion in sleeping context (suitable for user-blocking code sections).
+- **Atomic buffer updates**: Ensuring reads and writes don't interleave and leave buffer in inconsistent state.
+- **`fixed_size_llseek()`**: Helper to implement `.llseek` with bounds checking against buffer length.
+- **Best practice**: Always protect any shared kernel data (buffers, counters) that can be accessed concurrently from multiple processes/threads.
+
+---
+
+## Tools / Includes Used
+- `<linux/mutex.h>` → Provides `struct mutex` and related API.
+- `<linux/uaccess.h>` → `copy_to_user()` / `copy_from_user()`.
+- `<linux/fs.h>` → `fixed_size_llseek()` and `file_operations`.
+- `pr_info()` → Kernel logging to observe lock/wait info and operations.
+
+---
+
+## Test
+- `read_write_threaded_test.c` spawns multiple threads, each performing write + lseek + read to `/dev/sync_demo`.
+- The test checks that the driver returns consistent data (i.e., what was last written).
+- Run the test after inserting the module. Example:
