@@ -5,20 +5,28 @@
 #include<linux/device.h>
 #include<linux/cdev.h>
 #include<linux/mutex.h>
+#include<linux/list.h>
 
 #define DEVICE_NAME "task_driver"
 #define CLASS_NAME "task_class"
 #define MINOR_NUMBERS 1
 #define MINOR_NUMBER_START 0
-#define BUFFER_SIZE 1024
-struct mutex task_mutex; // Mutex for synchronisation
+#define BUFFER_SIZE 128
 
 static int major_number;
 static struct class *task_class = NULL;
 static struct device *task_device = NULL;
 static struct cdev task_cdev;
-static char task_buffer[BUFFER_SIZE+1]; // Buffer for read/write operations
-static int task_buffer_size = 0; // size of the buffer filled
+static DEFINE_MUTEX(task_mutex);
+static LIST_HEAD(task_list);
+static int id = 0; // global job id
+
+struct job_data {
+    int id;
+    char payload[BUFFER_SIZE];
+    struct list_head list; // for linked list
+};
+
 
 /***** file operations ****** */
 static int task_open(struct inode *inode, struct file *file) {
@@ -30,58 +38,80 @@ static int task_release(struct inode *node, struct file *file) {
     pr_info("Task Driver: Device closed\n");
     return 0;
 }
-
+// one time read, pass job
 static ssize_t task_read(struct file *file, char __user *buffer, size_t len, loff_t *offset) {
+    
+    struct job_data *job = NULL;
     int max_send_bytes = 0;
 
-    if(!mutex_trylock(&task_mutex)) {
-        pr_info("Task Driver: Device is busy, lock not acquired\n");
-        mutex_lock(&task_mutex);
+    if(*offset){
+        return 0; // EOF, no more data for current job
     }
 
-    if(*offset >= task_buffer_size) {
+    max_send_bytes = len;
+    mutex_lock(&task_mutex); // protext list
+
+    if(list_empty(&task_list)) {
         mutex_unlock(&task_mutex);
-        return 0; // No more data to read
+        pr_err("Task Driver : No tasks available to read\n");
+        return -ENODATA; // No data available
     }
 
-    max_send_bytes = min((int)len, task_buffer_size - (int)(*offset));
-    if(copy_to_user(buffer, task_buffer + *offset, max_send_bytes)) {
+    job = list_first_entry(&task_list, struct job_data, list);
+    list_del(&job->list); // remove it from list
+    pr_info("Task Driver: Read job with ID %d\n", job->id);
+
+    if(max_send_bytes > strlen(job->payload) + 1) {
+        max_send_bytes = strlen(job->payload) + 1; // +1 for null terminator
+        pr_info("Task Driver : sending len : %zu, bytes as buffer small than payload : %zu\n",
+            len,strlen(job->payload) + 1);
+    }
+    printk("sending %d bytes and len : %zu, string : %s",
+        max_send_bytes, len, job->payload);
+
+    if(copy_to_user(buffer, job->payload, max_send_bytes)) {
         pr_err("Task Driver: Failed to copy data to user space\n");
+        kfree(job); // free job memory
         mutex_unlock(&task_mutex);
         return -EFAULT;
     }
-    *offset += max_send_bytes;
-    pr_info("Task Driver: Read %d bytes from buffer\n", max_send_bytes);
+
+    kfree(job);
     mutex_unlock(&task_mutex);
+
+    pr_info("Task Driver : Send %d bytes to user space\n", max_send_bytes);
+    *offset = max_send_bytes;
     return max_send_bytes;
 }
 
-// wirte as much as you can, and return how much you wrote
+// insert a new job, with data given by user
 static ssize_t task_write(struct file *file, const char __user *buffer, size_t len, loff_t *offset) {
     int max_receive_bytes = 0;
+    struct job_data *new_job = NULL;
 
-    if(!mutex_trylock(&task_mutex)) {
-        pr_info("Task Driver: Device is busy, lock not acquired\n");
-        mutex_lock(&task_mutex); // Wait for the lock to be available
+    new_job = kmalloc(sizeof(*new_job), GFP_KERNEL);
+    if(IS_ERR(new_job)) {
+        pr_err("Task Driver: Failed to allocate memory for new job\n");
+        return -ENOMEM;
     }
 
-    if(*offset >= BUFFER_SIZE) {
-        mutex_unlock(&task_mutex);
-        pr_err("Task Driver: Buffer overflow, can't write more data\n");
-        return -ENOSPC; // No space left in buffer
+    max_receive_bytes = len;
+    if(max_receive_bytes > BUFFER_SIZE-1){
+        pr_info("Task Driver: Buffer size exceeded, reducing to %d bytes\n", BUFFER_SIZE);
+        max_receive_bytes = BUFFER_SIZE-1;
     }
 
-    // write as much as you can
-    max_receive_bytes = min((int)len, BUFFER_SIZE - (int)(*offset));
-    if(copy_from_user(task_buffer + *offset, buffer, max_receive_bytes)) {
+    mutex_lock(&task_mutex); // Wait for the lock to be available
+
+    if(copy_from_user(new_job->payload, buffer, max_receive_bytes)) {
         mutex_unlock(&task_mutex);
         pr_err("Task Driver: Failed to copy data from user space\n");
         return -EFAULT;
     }
 
-    *offset += max_receive_bytes;
-
-    task_buffer_size = max(task_buffer_size, (int)(*offset)); // Update buffer size
+    new_job->payload[max_receive_bytes] = '\0'; // Null-terminate the string so strlen works
+    new_job->id = id++;
+    list_add_tail(&new_job->list, &task_list); // add to end of list
     pr_info("Task Driver: Written %d bytes to buffer\n", max_receive_bytes);
     mutex_unlock(&task_mutex);
     return max_receive_bytes;
@@ -168,20 +198,24 @@ static int task_driver_init(void){
         return PTR_ERR(task_device);
     }
 
-    mutex_init(&task_mutex); // Initialize the mutex
-
     pr_info("Task Driver : Device created successfully\n");
     return 0;
 }
 
 static void task_driver_exit(void){
     dev_t dev_no = MKDEV(major_number, MINOR_NUMBER_START);
-
+    struct job_data *job,*tmp;
     // cleanup
     device_destroy(task_class, dev_no);
     cdev_del(&task_cdev);
     class_destroy(task_class);
     unregister_chrdev_region(dev_no, MINOR_NUMBERS);
+
+    // clearning list
+    list_for_each_entry_safe(job, tmp, &task_list, list) {
+        list_del(&job->list);
+        kfree(job);
+    }
     pr_info("Task Driver : Device removed successfully\n");
     return;
 }

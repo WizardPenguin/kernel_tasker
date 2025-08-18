@@ -240,3 +240,46 @@ spin lock / vs mutex
 
 
 
+LIST ----- linux API 
+
+basics 
+
+#define offsetof(TYPE, MEMBER) ((size_t)&(((TYPE *)0)->MEMBER))
+
+Goal: find the byte offset of MEMBER inside a struct TYPE.
+
+Trick:
+
+       (TYPE *)0 → makes a null pointer to TYPE.
+
+       ->MEMBER → accesses the member’s position as if the struct existed at address 0.
+
+       &(((TYPE *)0)->MEMBER) → gets the address offset from base 0.
+
+       size_t cast gives us the offset in bytes.
+
+
+#define container_of(ptr, type, member) ({                      \
+    const typeof( ((type *)0)->member ) *__mptr = (ptr);         \
+    (type *)( (char *)__mptr - offsetof(type, member) ); })
+
+
+Steps:
+
+       typeof(((type *)0)->member) → Get type of member (compiler check safety).
+
+       __mptr = (ptr) → Store the member pointer.
+
+       (char *)__mptr - offsetof(type, member) → Back up by the number of bytes from struct start to the member.
+
+       Cast to type *.
+
+
+### directly give first head, structure type, and then member name.
+#define list_first_entry(ptr, type, member) \
+	list_entry((ptr)->next, type, member)
+
+
+### give next pointer of data , not linked_list member.
+#define list_next_entry(pos, member) \
+	list_entry((pos)->member.next, typeof(*(pos)), member)
