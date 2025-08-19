@@ -283,3 +283,79 @@ Steps:
 ### give next pointer of data , not linked_list member.
 #define list_next_entry(pos, member) \
 	list_entry((pos)->member.next, typeof(*(pos)), member)
+
+
+                 ┌────────────────────────────┐
+                 │   Global Variable Sharing  │
+                 └─────────────┬──────────────┘
+                               │
+               ┌───────────────┴───────────────┐
+               │                               │
+        ✅ CORRECT USAGE                 ❌ WRONG USAGE
+               │                               │
+   ┌───────────┴───────────────┐       ┌───────┴───────────────┐
+   │ Header (.h)               │       │ Header (.h)           │
+   │                           │       │                       │
+   │ extern int job_counter;   │       │ int job_counter = 0;   │
+   │ (declaration only)        │       │ (definition inside!)   │
+   └───────────┬───────────────┘       └───────┬───────────────┘
+               │                               │
+   ┌───────────┴───────────────┐       ┌───────┴───────────────┐
+   │ One .c file                │       │ Multiple .c files     │
+   │                           │       │ include same header →  │
+   │ int job_counter = 0;      │       │ each creates a copy!   │
+   │ (definition here)         │       │                       │
+   └───────────┬───────────────┘       └────────┬──────────────┘
+               │                                │
+       Other .c files include            ❌ Linker Error:
+       the header → can use              "multiple definition 
+       the variable safely               of job_counter"
+
+
+
+### Something worth noting
+if I have header file saying some variables are extern
+Those varialbes are defined in some .c file, I can still include header in that .c file
+Linker does the job, finds one definition and resolves all references
+
+
+                        ┌──────────────────────────────┐
+                        │    Variable in Header File   │
+                        │   (e.g., extern int x;)      │
+                        └───────────────┬──────────────┘
+                                        │
+                          Included in Multiple .c files
+                                        │
+        ┌───────────────────────────────┼──────────────────────────────┐
+        │                                                               │
+   Case 1: Definition in exactly 1 .c file                   Case 2: Definition in header
+        │                                                               │
+ ┌──────┴───────────┐                                           ┌──────┴─────────────┐
+ │ myvar.c          │                                           │ myheader.h         │
+ │ ---------------- │                                           │ ------------------ │
+ │ int x = 42;      │   <─── Real Definition                    │ int x = 42;        │
+ │ (storage exists) │                                           │ (in every .c file) │
+ └──────┬───────────┘                                           └──────┬─────────────┘
+        │                                                               │
+   ┌────┴─────────────┐                                           ┌─────┴────────────┐
+   │ other.c          │                                           │ other.c          │
+   │ ---------------- │                                           │ ---------------- │
+   │ uses extern int x│                                           │ also defines x   │
+   └──────┬───────────┘                                           └─────┬────────────┘
+          │                                                             │
+          ▼                                                             ▼
+   ┌───────────────┐                                           ┌───────────────────┐
+   │ Compiler step │                                           │ Compiler step     │
+   │ - Each .c     │                                           │ - Each .c has its │
+   │   compiled to │                                           │   own int x       │
+   │   .o          │                                           │ - multiple copies │
+   └───────┬───────┘                                           └─────────┬─────────┘
+           │                                                            │
+           ▼                                                            ▼
+   ┌───────────────┐                                           ┌────────────────────┐
+   │ Linker step   │                                           │ Linker step        │
+   │ - Finds ONE   │                                           │ - Finds many defs  │
+   │   definition  │                                           │   of int x         │
+   │ - Resolves all│                                           │ - ERROR: "multiple │
+   │   extern refs │                                           │   definition of x" │
+   └───────────────┘                                           └────────────────────┘

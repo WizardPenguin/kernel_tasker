@@ -23,7 +23,7 @@ chmod +x test_script.sh
 ```
 
 
-## Day 2 Objective
+# Day 2 Objective
 Add read/write functionality to pass data between user space and kernel space.
 
 ---
@@ -49,7 +49,7 @@ Add read/write functionality to pass data between user space and kernel space.
 - read_write_test.c
 
 
-## Day 3 Objective
+# Day 3 Objective
 Add **basic synchronization** to make read/write safe under concurrent access and implement `.llseek` support for flexible file offsets.
 
 ---
@@ -81,3 +81,65 @@ Add **basic synchronization** to make read/write safe under concurrent access an
 - `read_write_threaded_test.c` spawns multiple threads, each performing write + lseek + read to `/dev/sync_demo`.
 - The test checks that the driver returns consistent data (i.e., what was last written).
 - Run the test after inserting the module. Example:
+
+# Day 4 – Custom Kernel Data Structure (Linked List Job Queue)
+
+## Objective:
+Implement a linked list in the kernel to store multiple jobs in a queue.
+
+## New Kernel Concepts Learned:
+- `struct list_head` and Linux list API (`list_add_tail`, `list_del`, `list_first_entry`, `list_empty`).
+- Dynamic memory allocation in kernel space with `kmalloc`/`kfree`.
+- Protecting linked list operations with `mutex`.
+
+## Driver Changes:
+- Replaced single buffer with a `struct job` queue.
+- Each job stores: ID, priority (future), and payload.
+- `.write` enqueues new jobs, `.read` dequeues jobs.
+
+## Tools/Includes Used:
+- `<linux/list.h>` → Kernel linked list API.
+- `<linux/slab.h>` → Memory allocation in kernel.
+- `<linux/mutex.h>` → Protect linked list access.
+
+
+# Day 5 – Sorted Priority Queue
+-----------------------------
+## Objective:
+Implement a job queue with sorted insertion to ensure O(1) retrieval of highest-priority job.
+
+## Concepts Learned:
+- list_for_each_entry() for traversal
+- Insertion before a given element in kernel list
+- Trade-off: O(n) insert vs O(1) read
+
+## Includes:
+<linux/list.h> – Doubly linked list API
+<linux/slab.h> – kmalloc/kfree
+
+## Test:
+- Insert jobs in random priority order
+- Ensure read order matches descending priority
+
+[TODO] implement priority queue by ourselves, either using tree or fix size array
+or resize array when size reached.
+
+# Time for modularisation
+
+kernel_tasker/
+ ├── src/                 # kernel module sources
+ │    ├── tasker_core.c
+ │    ├── tasker_cdev.c
+ │    ├── tasker_queue.c
+ │    └── tasker.h
+ │
+ ├── tests/               # all user-space test programs
+ │    ├── load_unload_test.c
+ │    ├── read_write_test.c
+ │    ├── read_write_threaded.c
+ │    ├── test_runner.c   # NEW: main program that calls all tests
+ │    └── Makefile        # builds test_runner + object files
+ │
+ ├── Makefile             # builds kernel module
+ └── run_tests.sh         # script to build + load module + run tests
+

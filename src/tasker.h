@@ -24,6 +24,8 @@
 #define task_err(fmt, ...) \
     pr_err("Task Driver: " fmt, ##__VA_ARGS__)
 
+#define task_warn(fmt, ...) \
+    pr_warn("Task Driver: " fmt, ##__VA_ARGS__)
 
 // structures
 struct job_data {

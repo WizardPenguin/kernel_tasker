@@ -4,7 +4,7 @@
 #include<string.h>
 #include<error.h>
 
-int main(){
+int run_load_unload_test(){
     int fd = open("/dev/task_driver", O_RDWR);
     if( fd < 0 ) {
         perror("load_unload_test : Failed to open device");

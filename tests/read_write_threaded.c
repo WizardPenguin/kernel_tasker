@@ -18,7 +18,6 @@ void *worker(void *arg) {
     struct thread_data *data = (struct thread_data *)arg;
     int fd, ret;
     char read_buffer[BUFFER_SIZE];
-    char write_buffer[BUFFER_SIZE];
     int id = data->id;
     int iterations = data->iterations;
 
@@ -28,8 +27,7 @@ void *worker(void *arg) {
             perror("threaded : failed to open device");
             pthread_exit(NULL);
         }
-        snprintf(write_buffer, BUFFER_SIZE, "Thread %d: Iteration %d", id, i);
-        ret = write(fd, write_buffer, strlen(write_buffer));
+        ret = dprintf(fd, "%d %d payload%d\n", id, i, i);
         if(ret < 0) {
             perror("threaded : failed to write to device");
             close(fd);
@@ -54,7 +52,7 @@ void *worker(void *arg) {
     return NULL;
 }
 
-int main(int argc, char *argv[]) {
+int run_read_write_threaded(int argc, char *argv[]) {
     int thread = 4;
     int iterations = 10;
 

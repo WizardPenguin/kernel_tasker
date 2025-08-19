@@ -1,7 +1,6 @@
 #include"tasker.h"
 
 static struct cdev cdev;
-static int id = 0;
 
 static int tasker_open(struct inode*, struct file*){
     task_info("Device opened\n");
@@ -15,6 +14,7 @@ static int tasker_release(struct inode*, struct file*){
 
 static ssize_t tasker_read(struct file *file, char __user *buffer, size_t len, loff_t *offset){
     struct job_data *job = NULL;
+    char buf[BUFFER_SIZE];
     int max_send_bytes = len;
 
     if(*offset){
@@ -27,16 +27,27 @@ static ssize_t tasker_read(struct file *file, char __user *buffer, size_t len, l
         return -ENODATA;
     }
     task_info("Read job with ID %d\n", job->id);
-
-    if(max_send_bytes > strlen(job->payload) + 1) {
-        max_send_bytes = strlen(job->payload) + 1; // +1 for null terminator
-        pr_info("Task Driver : sending len : %zu, bytes as buffer small than payload : %zu\n",
-            len,strlen(job->payload) + 1);
+    // creating payload
+    if(job->id < 0) {
+        // return payload as it iss
+        task_warn("Job ID is negative, using default ID\n");
+        strscpy(buf, job->payload, BUFFER_SIZE);
     }
-    pr_info("Task Driver : sending %d bytes and len : %zu, string : %s",
-        max_send_bytes, len, job->payload);
+    else {
+        scnprintf(buf, BUFFER_SIZE, "Job ID=%d Priority=%d Payload=%s\n",
+            job->id, job->priority, job->payload);
+    }
 
-    if(copy_to_user(buffer, job->payload, max_send_bytes)) {
+    if(max_send_bytes > strlen(buf) + 1) {
+        max_send_bytes = strlen(buf) + 1; // +1 for null terminator
+        pr_info("Task Driver : sending len : %zu, bytes as buffer small than payload : %zu\n",
+            len,strlen(buf) + 1);
+    }
+
+    pr_info("Task Driver : sending %d bytes and len : %zu, string : %s",
+        max_send_bytes, len, buf);
+
+    if(copy_to_user(buffer, buf, max_send_bytes)) {
         task_err("Failed to copy data to user space\n");
         kfree(job); // free job memory
         return -EFAULT;
@@ -50,6 +61,8 @@ static ssize_t tasker_read(struct file *file, char __user *buffer, size_t len, l
 
 static ssize_t tasker_write(struct file *file, const char __user *buffer, size_t len, loff_t *offset) {
     int max_receive_bytes = 0;
+    int n = 0,ret = 0;
+    char buf[BUFFER_SIZE];
     struct job_data *new_job = NULL;
 
     max_receive_bytes = len;
@@ -64,12 +77,23 @@ static ssize_t tasker_write(struct file *file, const char __user *buffer, size_t
         return -ENOMEM;
     }
 
-    if(copy_from_user(new_job->payload, buffer, max_receive_bytes)) {
+    if(copy_from_user(buf, buffer, max_receive_bytes)) {
         task_err("Failed to copy data from user space\n");
         return -EFAULT;
     }
-    new_job->payload[max_receive_bytes] = '\0'; // Null-terminate the string so strlen works
-    new_job->id = id++;
+    buf[max_receive_bytes] = '\0'; // Null-terminate the string so strlen works
+    ret = sscanf(buf, "%d %d %n", &new_job->id, &new_job->priority, &n);
+    if(ret < 3){
+        // paste remaining into payload
+        strscpy(new_job->payload, buf + n, BUFFER_SIZE);
+    }
+    else {
+        // everything is payloead
+        strscpy(new_job->payload, buf, BUFFER_SIZE);
+        new_job->id = -1; // default id if not provide
+        new_job->priority = 0; // default priority if not provided
+        task_warn("invalid input format, expected: <id> <priority> <payload>\n");
+    }
 
     insert_job_sorted(new_job);
     task_info("Written %d bytes to buffer\n", max_receive_bytes);

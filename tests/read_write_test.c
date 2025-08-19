@@ -37,7 +37,7 @@ int read_write(int fd, const char *data, size_t len) {
     return 0;
 }
 
-int main(){
+int run_read_write_test(){
     int fd = open("/dev/task_driver", O_RDWR);
     if( fd < 0 ) {
         perror("read_write_test : failed to open device");
