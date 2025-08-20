@@ -18,6 +18,7 @@ static ssize_t tasker_read(struct file *file, char __user *buffer, size_t len, l
     int max_send_bytes = len;
 
     if(*offset){
+        task_info("Offset is not zero, returning 0 bytes\n");
         return 0; // EOF, no more data for current job
     }
 
@@ -26,7 +27,7 @@ static ssize_t tasker_read(struct file *file, char __user *buffer, size_t len, l
         task_err("No tasks available to read\n");
         return -ENODATA;
     }
-    task_info("Read job with ID %d\n", job->id);
+    task_info("Read job with ID %d priority : %d\n", job->id, job->priority);
     // creating payload
     if(job->id < 0) {
         // return payload as it iss
@@ -40,11 +41,11 @@ static ssize_t tasker_read(struct file *file, char __user *buffer, size_t len, l
 
     if(max_send_bytes > strlen(buf) + 1) {
         max_send_bytes = strlen(buf) + 1; // +1 for null terminator
-        pr_info("Task Driver : sending len : %zu, bytes as buffer small than payload : %zu\n",
+        task_info("sending len : %zu, bytes as buffer small than payload : %zu\n",
             len,strlen(buf) + 1);
     }
 
-    pr_info("Task Driver : sending %d bytes and len : %zu, string : %s",
+    task_info("sending %d bytes and len : %zu, string : %s",
         max_send_bytes, len, buf);
 
     if(copy_to_user(buffer, buf, max_send_bytes)) {
@@ -54,7 +55,7 @@ static ssize_t tasker_read(struct file *file, char __user *buffer, size_t len, l
     }
 
     kfree(job);
-    pr_info("Task Driver : Send %d bytes to user space\n", max_send_bytes);
+    task_info("Send %d bytes to user space\n", max_send_bytes);
     *offset = max_send_bytes;
     return max_send_bytes;
 }
@@ -83,6 +84,8 @@ static ssize_t tasker_write(struct file *file, const char __user *buffer, size_t
     }
     buf[max_receive_bytes] = '\0'; // Null-terminate the string so strlen works
     ret = sscanf(buf, "%d %d %n", &new_job->id, &new_job->priority, &n);
+    // buf has limited characters
+    // and payload can then then all.
     if(ret < 3){
         // paste remaining into payload
         strscpy(new_job->payload, buf + n, BUFFER_SIZE);
@@ -96,7 +99,7 @@ static ssize_t tasker_write(struct file *file, const char __user *buffer, size_t
     }
 
     insert_job_sorted(new_job);
-    task_info("Written %d bytes to buffer\n", max_receive_bytes);
+    task_info("Job with ID %d inserted with priority %d %d bytes\n", job->id, job->priority,max_receive_bytes);
     return max_receive_bytes;
 }
 

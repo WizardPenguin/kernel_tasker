@@ -19,7 +19,6 @@ void insert_job_sorted(struct job_data *job){
     }
     list_add_tail(&job->list, &job_list); // add to end of list
     mutex_unlock(&job_mutex);
-    task_info("Job with ID %d inserted with priority %d\n", job->id, job->priority);
     return;
 }
 
@@ -36,7 +35,6 @@ struct job_data* get_next_job(void){
     job = list_first_entry(&job_list, struct job_data, list);
     list_del(&job->list); // remove it from list
     mutex_unlock(&job_mutex);
-    task_info("Read job with ID %d and priority %d\n", job->id, job->priority);
     return job;
 }
 

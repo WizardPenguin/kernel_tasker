@@ -29,6 +29,10 @@ int run_priority_order_test() {
     }
 
     for (int i = 0; i < 10; i++) {
+        // now read time
+        lseek(fd, 0, SEEK_SET); // reset offset to start
+        memset(buf, 0, sizeof(buf));
+        // as according to driver, if offset no 0, it returns nothing. so can't be printed.
         ret = read(fd, buf, sizeof(buf));
         if(ret < 0) {
             perror("priority_order_test : Failed to read from device");
@@ -38,4 +42,7 @@ int run_priority_order_test() {
         buf[ret] = '\0'; // Null-terminate the string
         printf("priority_order_test : Read %d bytes from device: %s\n", ret, buf);
     }
+    close(fd);
+    printf("priority_order_test : All tasks read successfully\n");
+    return 0;
 }

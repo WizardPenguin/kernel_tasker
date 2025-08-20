@@ -359,3 +359,40 @@ Linker does the job, finds one definition and resolves all references
    │ - Resolves all│                                           │ - ERROR: "multiple │
    │   extern refs │                                           │   definition of x" │
    └───────────────┘                                           └────────────────────┘
+
+
+
+
+# Got user space crash
+[  652.151894] show_signal: 112 callbacks suppressed
+[  652.151897] traps: tasker_test[3743] general protection fault ip:7de70d45445f sp:7fff9cb49990 error:0 in libc.so.6[7de70d428000+188000]
+
+since user crashed going to try gdb core dump
+
+ulimit -c unlimited
+----- crash program then.
+gdb ./tasker_test core
+
+TODO : add wait queues, this is how sockets works, and how logread -f, cat file & works.
+
+static DECLARE_WAIT_QUEUE_HEAD(job_wq);
+
+read : 
+if (list_empty(&job_list)) {
+    if (file->f_flags & O_NONBLOCK) {
+        return -EAGAIN; // non-blocking mode
+    }
+
+    // Blocking mode: wait until condition is true
+    wait_event_interruptible(job_wq, !list_empty(&job_list));
+
+    if (signal_pending(current)) // check if interrupted
+        return -ERESTARTSYS;
+}
+
+in write: 
+wake_up_interruptible(&job_wq);
+
+
+Test just via cat /dev/task_device &  [ device opened in non-blocking mode]
+// now write anything, that will come out from cat.

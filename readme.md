@@ -143,3 +143,5 @@ kernel_tasker/
  ├── Makefile             # builds kernel module
  └── run_tests.sh         # script to build + load module + run tests
 
+TODO: add wait queue refer notes
+
